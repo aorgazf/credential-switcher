@@ -2,16 +2,22 @@
 # Credential Switcher
 # Alvaro Orgaz Fuertes
 # GNU GPLv3
+#
+# ToDo:
+# - Credentials stored on the local drive are deleted after a set time. User is requested to provide again passwords which are encrypted witha new key and pin.
+# - Provide a graphical representation of the current credential being used (user/admin) (green/safe, red/unsafe).
+# - Display timer until timeout.
+# - generate a random KeyBase
 
 
 
 $CredentialsFolder = $env:USERPROFILE
 $PrivilegedCredentialsUsername = "admin"
-$UnprivilegedCredentialsUsername = "Alvaro"
+$UnprivilegedCredentialsUsername = "user"
 $NetworkShareDriveLetter = "Q:"
-$NetworkSharePath = "\\NAS\Portal"
+$NetworkSharePath = "\\NAS\Network_Folder"
 $SessionTimeOut = 1 #minutes
-$KeyBase = "LhQ0EfmWH8DB" 
+$KeyBase = "LhQd8omWH8DB" #change
 
 function Start-GCTimeoutDialog {
   [CmdletBinding(HelpUri = 'https://github.com/grantcarthew/GCPowerShell')]
