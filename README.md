@@ -21,7 +21,7 @@ When Windows connects to a network share using SMB protocol, it establishes a SM
 
 Attempting to establish a new connection with different credentials, net use shows the following errors:
 
-![error 1219 w](.\img\error 1219 w.png)
+![error 1219 w](https://raw.githubusercontent.com/aorgazf/credential-switcher/master/img/error 1219 w.png)
 
 Using the command line:
 
