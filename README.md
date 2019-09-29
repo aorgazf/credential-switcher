@@ -1,5 +1,5 @@
-# credential-switcher
-A PowerShell script to easily switch between credentials on a smb network share
+# Credential Switcher
+A PowerShell script to easily switch between credentials to access a smb network share.
 
 
 
@@ -19,15 +19,33 @@ In the same way that it is recommended that users do not have admin rights on th
 
 When Windows connects to a network share using SMB protocol, it establishes a SMB session using the credentials saved or provided when the connection is established. Unfortunately, Windows implementation of the protocol does not allow multiple concurrent connections to the same resource with different credentials.
 
-If we attempt to establish a new connection with different credentials, net use throws error 1219:
+Attempting to establish a new connection with different credentials, net use shows the following errors:
 
-![error 1219w](.\error 1219w.png)
+![error 1219 w](.\img\error 1219 w.png)
 
-![error 1219](.\error 1219.png)
+Using the command line:
 
-The `get-smbconnection` cmdlet shows that there were already mul
+![error 1219](.\img\error 1219.png)
 
-![get-smbconnection.png](.\get-smbconnection.png)
+The `get-smbconnection` cmdlet shows that there were already connections established under another username:
+
+![get-smbconnection.png](.\img\get-smbconnection.png)
+
+
+
+In order to establish a new connection with different credentials all current SMB connections need to be closed first, but Windows does not provide a simple mechanism to close those open connections.
+
+
+
+### The solution
+
+This simple PowerShell script allows the user to temporarily switch to use different credentials with higher permissions to carry out specific tasks and return back to using the original credentials once the task is completed or automatically after some time.
+
+
+
+
+
+
 
 
 
@@ -37,13 +55,7 @@ I generally don't need to modify these files. When I need to work on a file I us
 
 
 
-
-
 The best protection is ensuring very frequently backups are being performed and saved in safe locations.
-
-
-
-
 
 These credentials are stored in the system and can be viewed with Windows Credential Manager.
 
