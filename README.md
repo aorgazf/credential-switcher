@@ -25,11 +25,11 @@ Attempting to establish a new connection with different credentials, net use sho
 
 Using the command line:
 
-![error 1219](.\img\error 1219.png)
+![error 1219](https://raw.githubusercontent.com/aorgazf/credential-switcher/master/img/error%201219.png)
 
 The `get-smbconnection` cmdlet shows that there were already connections established under another username:
 
-![get-smbconnection.png](.\img\get-smbconnection.png)
+![get-smbconnection.png](https://raw.githubusercontent.com/aorgazf/credential-switcher/master/img/get-smbconnection.png)
 
 
 
