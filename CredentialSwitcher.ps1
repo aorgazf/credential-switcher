@@ -7,18 +7,39 @@
 # - Credentials stored on the local drive are deleted after a set time. User is requested to provide again passwords which are encrypted witha new key and pin.
 # - Provide a graphical representation of the current credential being used (user/admin) (green/safe, red/unsafe).
 # - Display timer until timeout.
-# - Generate a random KeyBase
-# - Combine both credentials in a single file
+# - Generate a random KeyBase.
+# - Combine both credentials in a single file.
 
 
 
-$CredentialsFolder = $env:USERPROFILE
+$CredentialsFolderPath = "$env:USERPROFILE\AppData\Local\CredentialSwitcher"
+$CredentialsFilePath = "$CredentialsFolderPath\Credentials.txt"
 $PrivilegedCredentialsUsername = "admin"
 $UnprivilegedCredentialsUsername = "user"
-$NetworkShareDriveLetter = "Q:"
-$NetworkSharePath = "\\NAS\Network_Folder"
+$NetworkShareDriveLetter = "N:"
+$NetworkHost="NAS" # host name or IP address
+$NetworkSharePath = "\\$NetworkHost\NetworkFolder"
 $SessionTimeOut = 1 #minutes
-$KeyBase = "LhQd8omWH8DB" #change
+$MinimumPinSize = 4
+$Today = Get-Date
+$CredentialsValidityPeriod = 10 #days
+
+
+
+$CredentialsFolderPath = "$env:USERPROFILE\AppData\Local\CredentialSwitcher"
+$CredentialsFilePath = "$CredentialsFolderPath\Credentials.txt"
+$PrivilegedCredentialsUsername = "admin"
+$UnprivilegedCredentialsUsername = "Alvaro"
+$NetworkShareDriveLetter = "Q:"
+$NetworkHost="NAS" # host name or IP address
+$NetworkSharePath = "\\$NetworkHost\Portal"
+$SessionTimeOut = 1 #minutes
+$MinimumPinSize = 4
+$Today = Get-Date
+$CredentialsValidityPeriod = 10 #days
+
+
+
 
 function Start-GCTimeoutDialog {
   [CmdletBinding(HelpUri = 'https://github.com/grantcarthew/GCPowerShell')]
@@ -164,53 +185,65 @@ function Start-GCTimeoutDialog {
   Write-Verbose -Message "Function completed: $($MyInvocation.MyCommand)"
 }
 
-
+#---------------------------------------------------------------------------------------------------------------------------------------------
 # Check for stored credentials
-# If credentials were not saved (or if they expired), ask user for privileged and unprivileged credentials, encrypt and save credentials
-if (-not((Test-Path -Path "${CredentialsFolder}\NAS Privileged Credentials.txt") -and (Test-Path -Path "${CredentialsFolder}\NAS Unprivileged Credentials.txt"))) {
-    
-    $PrivilegedCredentials = $host.ui.PromptForCredential("NAS Privileged Credentials", "Please enter password", $PrivilegedCredentialsUsername, "")
-    $UnprivilegedCredentials = $host.ui.PromptForCredential("NAS Unprivileged Credentials", "Please enter password", $UnprivilegedCredentialsUsername, "")
+# If credentials were not saved (or if they have expired), ask user for privileged and unprivileged credentials, encrypt them and save them
+$ValidCredentials = $false
+if (Test-Path -Path $CredentialsFilePath) {if ((Get-Item $CredentialsFilePath).LastWriteTime.AddDays($CredentialsValidityPeriod) -gt $Today) { $ValidCredentials=$true}}
+if (-not($ValidCredentials)) {  
+    #Ask user for credentials
+    $PrivilegedCredentials = $host.ui.PromptForCredential("Privileged Credentials", "Please enter password", $PrivilegedCredentialsUsername, "")
+    $UnprivilegedCredentials = $host.ui.PromptForCredential("Unprivileged Credentials", "Please enter password", $UnprivilegedCredentialsUsername, "")
 
-    # $KeyBase = -join ((65..90) + (97..122) | Get-Random -Count 12 | % {[char]$_}) Random for session-long credentials
-    $KeySS =  Read-Host "Please enter PIN" -asSecureString
-
-    for ($i=0; $i -lt 12; $i++) {
-        $KeySS.AppendChar($KeyBase[$i])
-    }
-
-    if ($KeySS.Length -ne 16) {
-        Write-Host "Pin must be 4 characters long!"
+    #Ask use to set a Passcode
+    $KeySS =  Read-Host "Please set Passcode" -asSecureString
+    if (($KeySS.Length -lt $MinimumPinSize) -or ($KeySS.Length -gt 16)) {
+        Write-Host "Pin must be between $MinimumPinSize to 16 characters long"
         Exit
     }
+    
+    #Pad key up to 16 bytes long
+    for ($i=$KeySS.Length; $i -lt 16; $i++) {
+        $KeySS.AppendChar([char]32)
+    }    
 
     $EncryptedPrivileged = ConvertFrom-SecureString -SecureString $PrivilegedCredentials.Password -SecureKey $KeySS
     $EncryptedUnprivileged = ConvertFrom-SecureString -SecureString $UnprivilegedCredentials.Password -SecureKey $KeySS
 
-    Set-Content -Path "${CredentialsFolder}\NAS Privileged Credentials.txt" -Value $EncryptedPrivileged
-    Set-Content -Path "${CredentialsFolder}\NAS Unprivileged Credentials.txt" -Value $EncryptedUnprivileged
-}
+    Write-Host $EncryptedPrivileged.Length
+    Write-Host $EncryptedUnprivileged.Length
 
+    New-Item -Path $CredentialsFilePath -ItemType "file" -Value "$EncryptedPrivileged`r`n" -Force
+    Add-Content -Path $CredentialsFilePath -Value $EncryptedUnprivileged -Force
+    
+    Write-Host "Credentials saved to $CredentialsFilePath"
+}
 #---------------------------------------------------------------------------------------------------------------------------------------------
 
 Add-Type -AssemblyName System.Windows.Forms
 
-# Ask for Pin, Decrypt and Mount
-$KeySS =  Read-Host "Please enter PIN" -asSecureString
-
-for ($i=0; $i -lt 12; $i++) {
-    $KeySS.AppendChar($KeyBase[$i])
-    }
-
-
-if ($KeySS.Length -ne 16) {
-    Write-Host "Pin must be 4 characters long!"
+# Ask for Passcode, Decrypt and Mount
+$KeySS =  Read-Host "Please enter Passcode" -asSecureString
+if (($KeySS.Length -lt $MinimumPinSize) -or ($KeySS.Length -gt 16)) {
+    Write-Host "Pin must be between $MinimumPinSize to 16 characters long"
     Exit
 }
+    
+#Pad key up to 16 bytes long
+for ($i=$KeySS.Length; $i -lt 16; $i++) {
+    $KeySS.AppendChar([char]32)
+}   
 
 
-$EncryptedPrivileged = Get-Content -Path "${CredentialsFolder}\NAS Privileged Credentials.txt" 
-$EncryptedUnprivileged = Get-Content -Path "${CredentialsFolder}\NAS Unprivileged Credentials.txt"
+
+
+($EncryptedPrivileged, $EncryptedUnprivileged) = Get-Content -Path "$CredentialsFilePath"
+    Write-Host $EncryptedPrivileged.Length
+    Write-Host $EncryptedUnprivileged.Length
+
+($EncryptedPrivileged, $EncryptedUnprivileged) = (Get-Content -Path "$CredentialsFilePath").replace("`r`n","")  
+    Write-Host $EncryptedPrivileged.Length
+    Write-Host $EncryptedUnprivileged.Length
 
 $PrivilegedPasswordSS = ConvertTo-SecureString -String $EncryptedPrivileged -SecureKey $KeySS
 $UnprivilegedPasswordSS = ConvertTo-SecureString -String $EncryptedUnprivileged -SecureKey $KeySS
@@ -218,78 +251,37 @@ $UnprivilegedPasswordSS = ConvertTo-SecureString -String $EncryptedUnprivileged 
 $PrivilegedCredentials = New-Object System.Management.Automation.PsCredential($PrivilegedCredentialsUsername, $PrivilegedPasswordSS)
 $UnprivilegedCredentials = New-Object System.Management.Automation.PsCredential($UnprivilegedCredentialsUsername, $UnprivilegedPasswordSS)
 
-
-
-
-#$msgBoxInput =  [Windows.Forms.MessageBox]::Show('Switching to priviledged credentials requires restarting Explorer. Would you like to proceed? ','Credential Switching', [Windows.Forms.MessageBoxButtons]::YesNo, [Windows.Forms.MessageBoxIcon]::Exclamation)
-
-switch  ($msgBoxInput) {
-  'Yes' {
-    net use /delete $NetworkShareDriveLetter /y
-    Start-Sleep -Milliseconds  200
-    taskkill /f /IM explorer.exe
-    Start-Sleep -Milliseconds  200
-    $Result = &{net use $NetworkShareDriveLetter $NetworkSharePath /user:$($PrivilegedCredentials.UserName) $($PrivilegedCredentials.GetNetworkCredential().Password)} *>&1
-    Start-Sleep -Milliseconds  200
-    start explorer.exe
- <#
-	if (-not $Result.Contains('The command completed successfully.')) {
-        [Windows.Forms.MessageBox]::Show($Result,'Credential Switching', [Windows.Forms.MessageBoxButtons]::OK , [Windows.Forms.MessageBoxIcon]::Error)
-        Exit
-    }
-#>
-  }
-
-  'No' {
-    Exit
-  }
-}
+#Switch
+net use /delete $NetworkShareDriveLetter /y
+cmdkey /delete:$NetworkHost
+taskkill /f /IM explorer.exe
+Start-Sleep -Milliseconds  100
+net use $NetworkShareDriveLetter $NetworkSharePath /user:$($PrivilegedCredentials.UserName) "$($PrivilegedCredentials.GetNetworkCredential().Password)"
+Start-Sleep -Milliseconds  100
+start explorer.exe
 
 
 
 do {
 Start-Sleep -Milliseconds  ($SessionTimeOut * 60000)
     #$msgBoxInput = [Windows.Forms.MessageBox]::Show('Credentials are going to be switched back to unpriviledged. If you would like to continue working with admin credentials please press cancel','Credential Switching', [Windows.Forms.MessageBoxButtons]::OKCancel, [Windows.Forms.MessageBoxIcon]::Question)
-
-$msgBoxInput = Start-GCTimeoutDialog -Title "Credential Switching" -Message "Credentials are going to be switched back to unpriviledged. If you would like to continue working with privileged credentials please press Cancel." -Seconds 10
+$msgBoxInput = Start-GCTimeoutDialog -Title "Credential Switcher" -Message "Credentials are going to be switched back to unpriviledged. If you would like to continue working with privileged credentials please press Cancel." -Seconds 10
 } while ($msgBoxInput -eq 'Cancel')
 
 
 # SwitchCredentials Back
 net use /delete $NetworkShareDriveLetter /y
-Start-Sleep -Milliseconds  200
+cmdkey /delete:$NetworkHost
 taskkill /f /IM explorer.exe
-Start-Sleep -Milliseconds  200
-$Result = &{net use $NetworkShareDriveLetter $NetworkSharePath /user:$($UnprivilegedCredentials.UserName) $($UnprivilegedCredentials.GetNetworkCredential().Password)} *>&1
-Start-Sleep -Milliseconds  200
+Start-Sleep -Milliseconds  100
+net use $NetworkShareDriveLetter $NetworkSharePath /user:$($UnprivilegedCredentials.UserName) "$($UnprivilegedCredentials.GetNetworkCredential().Password)"
+Start-Sleep -Milliseconds  100
 start explorer.exe
-<#
-	if (-not $Result.Contains('The command completed successfully.')) {
-        [Windows.Forms.MessageBox]::Show($Result,'Credential Switching', [Windows.Forms.MessageBoxButtons]::OK , [Windows.Forms.MessageBoxIcon]::Error)
-        Exit
-    }
-#>
+cmdkey /add:$NetworkHost /user:$($UnprivilegedCredentials.UserName) /pass:"$($UnprivilegedCredentials.GetNetworkCredential().Password)"
 
-
-# Get-SmbConnection # requires Admin Privs
-# Get-SmbConnection -ServerName NAS | Select-Object -Property *
-
-
-
-#net use /delete Q: /y
-#cmdkey /delete:NAS
-#net use Q: \\NAS\Network_Folder /user:admin 'admin_password'
-
-
-
-#net use /delete Q: /y
-#cmdkey /add:NAS /user:user /pass:'user_password'
-#net use Q: \\NAS\Network_Folder 
 
 #  Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
-# $PrivilegedCredentials.GetNetworkCredential().Password # Prints Password
-# $UnprivilegedCredentials.GetNetworkCredential().Password # Prints Password
 
 
 
