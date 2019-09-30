@@ -7,7 +7,8 @@
 # - Credentials stored on the local drive are deleted after a set time. User is requested to provide again passwords which are encrypted witha new key and pin.
 # - Provide a graphical representation of the current credential being used (user/admin) (green/safe, red/unsafe).
 # - Display timer until timeout.
-# - generate a random KeyBase
+# - Generate a random KeyBase
+# - Combine both credentials in a single file
 
 
 
@@ -164,7 +165,8 @@ function Start-GCTimeoutDialog {
 }
 
 
-# If credentials are not saved, encrypt and save privileged and unprivileged credentials to credentials folder
+# Check for stored credentials
+# If credentials were not saved (or if they expired), ask user for privileged and unprivileged credentials, encrypt and save credentials
 if (-not((Test-Path -Path "${CredentialsFolder}\NAS Privileged Credentials.txt") -and (Test-Path -Path "${CredentialsFolder}\NAS Unprivileged Credentials.txt"))) {
     
     $PrivilegedCredentials = $host.ui.PromptForCredential("NAS Privileged Credentials", "Please enter password", $PrivilegedCredentialsUsername, "")
