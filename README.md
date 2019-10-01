@@ -3,15 +3,13 @@ A PowerShell script to easily switch between credentials to access a smb network
 
 
 
-### The problem
-
 The number of Ransomware attacks is on the rise. Criminals are turning into cyber criminals as ransomware and virtual currency mining are making it a very profitable activity. When a computer is infected with ransomware, it tries to encrypt all files in the local computer and on the network to cause as much damage as possible.
 
-In many personal and business environments users access information stored on network folders. These folders usually serve as a repository of files. The more data these folders contain, the more valuable they become. 
+In many personal and business environments users access information stored on network folders. These folders usually serve as a repositories of files. The more data these folders contain, the more valuable they become. 
 
 To minimise the damage that malware could cause if it were to gain access to a computer, the principle of least privilege should be applied, restricting where possible the access rights of users to just those absolutely required. When accessing repositories, users most of the time don't need full read and write permissions; writing is only required when users try to safe file changes or when they need to reorganise the repository.
 
-In the same way that it is recommended that users do not have admin rights on their accounts and use administrator account only when needed, it would be desirable that network users are granted only reading access to repositories and use a separate account with writing permissions when they need to do so.
+In the same way that it is recommended that users do not have admin rights on their accounts and use administrator account only when needed, it would be desirable that network users be granted only reading access to repositories and use a separate account with writing permissions when they need to do so.
 
 When Windows connects to a network share using SMB protocol, it establishes a SMB session using the credentials saved or provided when the connection is established. Unfortunately, Windows implementation of the protocol does not allow multiple concurrent connections to the same resource with different credentials.
 
