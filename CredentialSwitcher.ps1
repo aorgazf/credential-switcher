@@ -235,15 +235,7 @@ for ($i=$KeySS.Length; $i -lt 16; $i++) {
 }   
 
 
-
-
 ($EncryptedPrivileged, $EncryptedUnprivileged) = Get-Content -Path "$CredentialsFilePath"
-    Write-Host $EncryptedPrivileged.Length
-    Write-Host $EncryptedUnprivileged.Length
-
-($EncryptedPrivileged, $EncryptedUnprivileged) = (Get-Content -Path "$CredentialsFilePath").replace("`r`n","")  
-    Write-Host $EncryptedPrivileged.Length
-    Write-Host $EncryptedUnprivileged.Length
 
 $PrivilegedPasswordSS = ConvertTo-SecureString -String $EncryptedPrivileged -SecureKey $KeySS
 $UnprivilegedPasswordSS = ConvertTo-SecureString -String $EncryptedUnprivileged -SecureKey $KeySS
@@ -255,17 +247,16 @@ $UnprivilegedCredentials = New-Object System.Management.Automation.PsCredential(
 net use /delete $NetworkShareDriveLetter /y
 cmdkey /delete:$NetworkHost
 taskkill /f /IM explorer.exe
-Start-Sleep -Milliseconds  100
+Start-Sleep -Milliseconds  400
 net use $NetworkShareDriveLetter $NetworkSharePath /user:$($PrivilegedCredentials.UserName) "$($PrivilegedCredentials.GetNetworkCredential().Password)"
-Start-Sleep -Milliseconds  100
+Start-Sleep -Milliseconds  600
 start explorer.exe
-
 
 
 do {
 Start-Sleep -Milliseconds  ($SessionTimeOut * 60000)
     #$msgBoxInput = [Windows.Forms.MessageBox]::Show('Credentials are going to be switched back to unpriviledged. If you would like to continue working with admin credentials please press cancel','Credential Switching', [Windows.Forms.MessageBoxButtons]::OKCancel, [Windows.Forms.MessageBoxIcon]::Question)
-$msgBoxInput = Start-GCTimeoutDialog -Title "Credential Switcher" -Message "Credentials are going to be switched back to unpriviledged. If you would like to continue working with privileged credentials please press Cancel." -Seconds 10
+    $msgBoxInput = Start-GCTimeoutDialog -Title "Credential Switcher" -Message "Credentials are going to be switched back to unpriviledged. If you would like to continue working with privileged credentials please press Cancel." -Seconds 10
 } while ($msgBoxInput -eq 'Cancel')
 
 
@@ -273,15 +264,64 @@ $msgBoxInput = Start-GCTimeoutDialog -Title "Credential Switcher" -Message "Cred
 net use /delete $NetworkShareDriveLetter /y
 cmdkey /delete:$NetworkHost
 taskkill /f /IM explorer.exe
-Start-Sleep -Milliseconds  100
+Start-Sleep -Milliseconds  400
 net use $NetworkShareDriveLetter $NetworkSharePath /user:$($UnprivilegedCredentials.UserName) "$($UnprivilegedCredentials.GetNetworkCredential().Password)"
-Start-Sleep -Milliseconds  100
+Start-Sleep -Milliseconds  600
 start explorer.exe
 cmdkey /add:$NetworkHost /user:$($UnprivilegedCredentials.UserName) /pass:"$($UnprivilegedCredentials.GetNetworkCredential().Password)"
 
 
 #  Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+#  Update-SmbMultichannelConnection
+#  netsh interface show interface
+#  netsh interface set interface "YOUR-ADAPTER-NAME" disable
+#  netsh interface set interface "YOUR-ADAPTER-NAME" enable
+#  Get-NetAdapter | format-table
+#  Disable-NetAdapter -Name "YOUR-ADAPTER-NAME" -Confirm:$false
+#  Enable-NetAdapter -Name "YOUR-ADAPTER-NAME" -Confirm:$false
+#  Get-SmbClientConfiguration
+#  Get-SmbSession
+#  Start-Process powershell -Verb runAs
+
+If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))
+{   
+$arguments = "& '" + $myinvocation.mycommand.definition + "'"
+Start-Process powershell -Verb runAs -ArgumentList $arguments
+Break
+}
 
 
+# Get the ID and security principal of the current user account
+$myWindowsID=[System.Security.Principal.WindowsIdentity]::GetCurrent()
+$myWindowsPrincipal=new-object System.Security.Principal.WindowsPrincipal($myWindowsID)
 
+# Get the security principal for the Administrator role
+$adminRole=[System.Security.Principal.WindowsBuiltInRole]::Administrator
 
+# Check to see if we are currently running "as Administrator"
+if ($myWindowsPrincipal.IsInRole($adminRole))
+   {
+   # We are running "as Administrator" - so change the title and background color to indicate this
+   $Host.UI.RawUI.WindowTitle = $myInvocation.MyCommand.Definition + "(Elevated)"
+   $Host.UI.RawUI.BackgroundColor = "DarkBlue"
+   clear-host
+   }
+
+else
+   {
+   # We are not running "as Administrator" - so relaunch as administrator
+   # Create a new process object that starts PowerShell
+   $newProcess = new-object System.Diagnostics.ProcessStartInfo "PowerShell";
+   # Specify the current script path and name as a parameter
+   $newProcess.Arguments = $myInvocation.MyCommand.Definition;
+   # Indicate that the process should be elevated
+   $newProcess.Verb = "runas";
+   # Start the new process
+   [System.Diagnostics.Process]::Start($newProcess);
+   # Exit from the current, unelevated, process
+   exit
+   }
+
+# Run your code that needs to be elevated here
+Write-Host -NoNewLine "Press any key to continue..."
+$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")

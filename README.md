@@ -9,7 +9,7 @@ The number of Ransomware attacks is on the rise. Criminals are turning into cybe
 
 In many personal and business environments users access information stored on network folders. These folders usually serve as a repository of files. The more data these folders contain, the more valuable they become. 
 
-To minimise the damaged that malware could cause if it were to gain access to a computer, it would be best to apply the principle of least privilege where possible and restrict users access rights to those absolutely required. When accessing repositories, users most of the time don't need full reading and writing permissions; writing is only required when users try to safe file changes or when they need to reorganise the repository.
+To minimise the damage that malware could cause if it were to gain access to a computer, the principle of least privilege should be applied, restricting where possible the access rights of users to just those absolutely required. When accessing repositories, users most of the time don't need full read and write permissions; writing is only required when users try to safe file changes or when they need to reorganise the repository.
 
 In the same way that it is recommended that users do not have admin rights on their accounts and use administrator account only when needed, it would be desirable that network users are granted only reading access to repositories and use a separate account with writing permissions when they need to do so.
 
