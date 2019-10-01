@@ -33,7 +33,7 @@ $UnprivilegedCredentialsUsername = "Alvaro"
 $NetworkShareDriveLetter = "Q:"
 $NetworkHost="NAS" # host name or IP address
 $NetworkSharePath = "\\$NetworkHost\Portal"
-$SessionTimeOut = 1 #minutes
+$SessionTimeOut = 0.5 #minutes
 $MinimumPinSize = 4
 $Today = Get-Date
 $CredentialsValidityPeriod = 10 #days
@@ -246,11 +246,15 @@ $UnprivilegedCredentials = New-Object System.Management.Automation.PsCredential(
 #Switch
 net use /delete $NetworkShareDriveLetter /y
 cmdkey /delete:$NetworkHost
-taskkill /f /IM explorer.exe
-Start-Sleep -Milliseconds  400
-net use $NetworkShareDriveLetter $NetworkSharePath /user:$($PrivilegedCredentials.UserName) "$($PrivilegedCredentials.GetNetworkCredential().Password)"
-Start-Sleep -Milliseconds  600
-start explorer.exe
+Start-Process PowerShell -Verb RunAs -ArgumentList "Disable-NetAdapter -Name Ethernet -Confirm:$false"
+do {} while ((Get-NetAdapter Ethernet).Status -ne "Disabled")
+Start-Process PowerShell -Verb RunAs -ArgumentList "Enable-NetAdapter -Name Ethernet -Confirm:$false"
+do {} while ((Get-NetAdapter Ethernet).Status -ne "Up")
+do{
+Start-Sleep -Milliseconds  1000
+$Result= &{ net use $NetworkShareDriveLetter $NetworkSharePath /user:$($PrivilegedCredentials.UserName) "$($PrivilegedCredentials.GetNetworkCredential().Password)" } *>&1
+} while (-not $Result.Contains('The command completed successfully.'))
+
 
 
 do {
@@ -263,12 +267,32 @@ Start-Sleep -Milliseconds  ($SessionTimeOut * 60000)
 # SwitchCredentials Back
 net use /delete $NetworkShareDriveLetter /y
 cmdkey /delete:$NetworkHost
-taskkill /f /IM explorer.exe
-Start-Sleep -Milliseconds  400
-net use $NetworkShareDriveLetter $NetworkSharePath /user:$($UnprivilegedCredentials.UserName) "$($UnprivilegedCredentials.GetNetworkCredential().Password)"
-Start-Sleep -Milliseconds  600
-start explorer.exe
+Start-Process PowerShell -Verb RunAs -ArgumentList "Disable-NetAdapter -Name Ethernet -Confirm:$false"
+do {} while ((Get-NetAdapter Ethernet).Status -ne "Disabled")
+Start-Process PowerShell -Verb RunAs -ArgumentList "Enable-NetAdapter -Name Ethernet -Confirm:$false"
+do {} while ((Get-NetAdapter Ethernet).Status -ne "Up")
 cmdkey /add:$NetworkHost /user:$($UnprivilegedCredentials.UserName) /pass:"$($UnprivilegedCredentials.GetNetworkCredential().Password)"
+do{
+Start-Sleep -Milliseconds  1000
+$Result= &{ net use $NetworkShareDriveLetter $NetworkSharePath /user:$($UnprivilegedCredentials.UserName) "$($UnprivilegedCredentials.GetNetworkCredential().Password)"} *>&1
+} while (-not $Result.Contains('The command completed successfully.'))
+
+
+
+
+
+# taskkill /f /IM explorer.exe
+# Start-Sleep -Milliseconds  400
+# 
+# Start-Sleep -Milliseconds  600
+# start explorer.exe
+
+# Start-Process PowerShell -Verb RunAs -ArgumentList "Disable-NetAdapter -Name Ethernet -Confirm:$false"
+# Start-Sleep -Milliseconds  400
+# Start-Process PowerShell -Verb RunAs -ArgumentList "Enable-NetAdapter -Name Ethernet -Confirm:$false"
+# Start-Sleep -Milliseconds  2000
+
+
 
 
 #  Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
@@ -278,8 +302,8 @@ cmdkey /add:$NetworkHost /user:$($UnprivilegedCredentials.UserName) /pass:"$($Un
 #  netsh interface set interface "YOUR-ADAPTER-NAME" enable
 #  Start-Process PowerShell -Verb RunAs -ArgumentList "netsh interface set interface Ethernet disable"
 #  Get-NetAdapter | format-table
-#  Disable-NetAdapter -Name "YOUR-ADAPTER-NAME" -Confirm:$false
-#  Enable-NetAdapter -Name "YOUR-ADAPTER-NAME" -Confirm:$false
+#  Disable-NetAdapter -Name Ethernet -Confirm:$false
+#  Enable-NetAdapter -Name Ethernet -Confirm:$false
 #  Get-SmbClientConfiguration
 #  Get-SmbSession
 #  Start-Process powershell -Verb runAs
@@ -306,9 +330,7 @@ if ($myWindowsPrincipal.IsInRole($adminRole))
    $Host.UI.RawUI.WindowTitle = $myInvocation.MyCommand.Definition + "(Elevated)"
    $Host.UI.RawUI.BackgroundColor = "DarkBlue"
    clear-host
-   }
-
-else
+   } else
    {
    # We are not running "as Administrator" - so relaunch as administrator
    # Create a new process object that starts PowerShell
@@ -320,9 +342,19 @@ else
    # Start the new process
    [System.Diagnostics.Process]::Start($newProcess);
    # Exit from the current, unelevated, process
-   exit
+   #exit
    }
 
 # Run your code that needs to be elevated here
 Write-Host -NoNewLine "Press any key to continue..."
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+
+
+do{
+    cls
+    get-smbconnection
+    #Get-NetAdapter Ethernet | format-table
+    #Get-NetAdapter Ethernet | Format-List -Property "Status"
+     (Get-NetAdapter Ethernet).Status
+    Start-Sleep -Milliseconds  700
+} while ($true)
