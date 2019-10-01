@@ -276,6 +276,7 @@ cmdkey /add:$NetworkHost /user:$($UnprivilegedCredentials.UserName) /pass:"$($Un
 #  netsh interface show interface
 #  netsh interface set interface "YOUR-ADAPTER-NAME" disable
 #  netsh interface set interface "YOUR-ADAPTER-NAME" enable
+#  Start-Process PowerShell -Verb RunAs -ArgumentList "netsh interface set interface Ethernet disable"
 #  Get-NetAdapter | format-table
 #  Disable-NetAdapter -Name "YOUR-ADAPTER-NAME" -Confirm:$false
 #  Enable-NetAdapter -Name "YOUR-ADAPTER-NAME" -Confirm:$false
