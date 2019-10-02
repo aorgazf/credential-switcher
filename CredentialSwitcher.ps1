@@ -308,46 +308,6 @@ $Result= &{ net use $NetworkShareDriveLetter $NetworkSharePath /user:$($Unprivil
 #  Get-SmbSession
 #  Start-Process powershell -Verb runAs
 
-If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))
-{   
-$arguments = "& '" + $myinvocation.mycommand.definition + "'"
-Start-Process powershell -Verb runAs -ArgumentList $arguments
-Break
-}
-
-
-# Get the ID and security principal of the current user account
-$myWindowsID=[System.Security.Principal.WindowsIdentity]::GetCurrent()
-$myWindowsPrincipal=new-object System.Security.Principal.WindowsPrincipal($myWindowsID)
-
-# Get the security principal for the Administrator role
-$adminRole=[System.Security.Principal.WindowsBuiltInRole]::Administrator
-
-# Check to see if we are currently running "as Administrator"
-if ($myWindowsPrincipal.IsInRole($adminRole))
-   {
-   # We are running "as Administrator" - so change the title and background color to indicate this
-   $Host.UI.RawUI.WindowTitle = $myInvocation.MyCommand.Definition + "(Elevated)"
-   $Host.UI.RawUI.BackgroundColor = "DarkBlue"
-   clear-host
-   } else
-   {
-   # We are not running "as Administrator" - so relaunch as administrator
-   # Create a new process object that starts PowerShell
-   $newProcess = new-object System.Diagnostics.ProcessStartInfo "PowerShell";
-   # Specify the current script path and name as a parameter
-   $newProcess.Arguments = $myInvocation.MyCommand.Definition;
-   # Indicate that the process should be elevated
-   $newProcess.Verb = "runas";
-   # Start the new process
-   [System.Diagnostics.Process]::Start($newProcess);
-   # Exit from the current, unelevated, process
-   #exit
-   }
-
-# Run your code that needs to be elevated here
-Write-Host -NoNewLine "Press any key to continue..."
-$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 
 
 do{
@@ -358,3 +318,103 @@ do{
      (Get-NetAdapter Ethernet).Status
     Start-Sleep -Milliseconds  700
 } while ($true)
+
+
+
+
+# named pipe - server
+$name = 'foo'
+$namedPipe = New-Object IO.Pipes.NamedPipeServerStream($name, 'Out')
+$namedPipe.WaitForConnection()
+
+$script:writer = New-Object IO.StreamWriter($namedPipe)
+$writer.AutoFlush = $true
+$writer.WriteLine('something')
+$writer.Dispose()
+
+$namedPipe.Dispose()
+
+# named pipe - client
+$name = 'CredentialSwitcher'
+$namedPipe = New-Object IO.Pipes.NamedPipeClientStream('.', $name, 'InOut')
+$namedPipe.Connect()
+$script:writer = New-Object IO.StreamWriter($namedPipe)
+
+$writer.WriteLine('RESET')
+$writer.Dispose()
+$script:reader = New-Object IO.StreamReader($namedPipe)
+
+$reader.ReadLine()
+$reader.Dispose()
+$namedPipe.Dispose() 
+
+
+
+
+
+
+
+
+
+
+
+$continue = $true
+while($continue)
+{
+
+    if ([console]::KeyAvailable)
+    {
+        echo "Toggle with F12";
+        $x = [System.Console]::ReadKey() 
+
+        switch ( $x.key)
+        {
+            F12 { $continue = $false }
+        }
+    } 
+    else
+    {
+        $wsh = New-Object -ComObject WScript.Shell
+        $wsh.SendKeys('{CAPSLOCK}')
+        sleep 1
+        [System.Runtime.Interopservices.Marshal]::ReleaseComObject($wsh)| out-null
+        Remove-Variable wsh
+    }    
+}
+
+
+
+
+
+
+
+
+
+Param
+ (
+	[String]$Restart	
+ )
+
+If ($Restart -ne "") 
+	{
+		sleep 10
+	} 
+
+$Current_Folder = split-path $MyInvocation.MyCommand.Path
+
+
+
+
+ 
+ 
+ # When Exit is clicked, close everything and kill the PowerShell process
+$Menu_Restart_Tool.add_Click({
+	$Restart = "Yes"
+	start-process -WindowStyle hidden powershell.exe "C:\ProgramData\MySystrayTool\PS1_Systray_Tool.ps1 '$Restart'" 	
+
+	$Main_Tool_Icon.Visible = $false
+	$window.Close()
+	Stop-Process $pid	
+ })
+ 
+ 
