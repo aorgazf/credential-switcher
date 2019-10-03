@@ -59,7 +59,8 @@ $SessionTimeOut = 1 #minutes
 $MinimumPinSize = 4
 $Today = Get-Date
 $CredentialsValidityPeriod = 10 #days
-
+$addr = [ipaddress]'127.0.0.1'
+$port = 1234
 
 
 $CredentialsFolderPath = "$env:USERPROFILE\AppData\Local\CredentialSwitcher"
@@ -73,7 +74,8 @@ $SessionTimeOut = 0.2 #minutes
 $MinimumPinSize = 4
 $Today = Get-Date
 $CredentialsValidityPeriod = 10 #days
-
+$addr = [ipaddress]'127.0.0.1'
+$port = 1233
 
 #---------------------------------------------------------------------------------------------------------------------------------------------
 # Check for stored credentials
@@ -125,9 +127,33 @@ do {} while ((Get-NetAdapter Ethernet).Status -ne "Up")
 $NotifyIcon.ShowBalloonTip(30000,"Attention!","Network Adapter Reset",[system.windows.forms.ToolTipIcon]"Warning")
 }
 
-$CSPipeServer = new-object System.IO.Pipes.NamedPipeServerStream('CredentialSwitcher', [System.IO.Pipes.PipeDirection]::InOut)
 
-    
+
+
+ $scriptblock = {
+    #param($myParam); 
+
+    $endpoint = New-Object Net.IPEndPoint ($addr, $port)
+    $server = New-Object Net.Sockets.TcpListener $endpoint
+    $server.Start()
+    $cn = $server.AcceptTcpClient()
+    $stream = $cn.GetStream()
+    $reader = New-Object IO.StreamReader($stream)
+
+    while ($True) {
+        Try{
+            $command = $reader.ReadLine()
+            Write-Output $command
+            if ($command -eq 'EXIT') {[console]::beep(1900,2000); break}
+            Start-Sleep -Seconds 1
+        } Catch {}
+    }
+}
+
+$job = Start-Job -ScriptBlock $scriptblock #-args $myParamsIWantToPassToScriptblock
+
+
+
 
 
 
@@ -156,8 +182,6 @@ $iconWarn = New-Object System.Drawing.Icon("$PSScriptRoot\Warning.ico")
 
 $MainForm.ShowInTaskbar = $false
 $MainForm.WindowState = "minimized"
-
-
 
 
 $NotifyIcon.Icon =  $iconWarn
@@ -200,41 +224,32 @@ $TimerRoutine.add_Tick({Routine})
 $TimerRoutine.start()
 
 Function Routine{
-    #Get-SmbConnection
-    #Get-NetAdapter Ethernet | format-table
-    #Get-NetAdapter Ethernet | Format-List -Property "Status"
-    #(Get-NetAdapter Ethernet).Status
-    [console]::beep(500,300)
+    $command = Receive-Job $job
+    switch ($command) {
+    'RESET' {ResetNetworkAdapter}
+    'EXIT'  {
+       $TimerHDD.stop()
+       $NotifyIcon.Visible = $False
+       $MainForm.close()
+       Stop-Process $pid
+      }
+    }
 }
-
 
 $TimerSessionTimeOut.Interval = 3000 # ($SessionTimeOut * 60000)
 $TimerSessionTimeOut.add_Tick({TimeOut})
-$TimerSessionTimeOut.start()
+#$TimerSessionTimeOut.start()
 
 Function TimeOut {
     $TimerSessionTimeOut.stop()
-    $CSPipeServer.WaitForConnection()
-    [console]::beep(900,800)
-    
-    $script:pipeReader = new-object System.IO.StreamReader($CSPipeServer)
-    $script:pipeWriter = new-object System.IO.StreamWriter($CSPipeServer)
-    $pipeWriter.AutoFlush = $true
-    while ($CSPipeServer.IsConnected) {
-        $command = $pipeReader.ReadLine()
-        if ($command -eq 'RESET') {[console]::beep(1900,2000); ResetNetworkAdapter}
-        Start-Sleep -Seconds 1
-        [console]::beep(500,100)
-    }
     $TimerSessionTimeOut.start()
 }
 
 
-
 # Make PowerShell Window Disappear
-#$windowcode = '[DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);'
-#$asyncwindow = Add-Type -MemberDefinition $windowcode -name Win32ShowWindowAsync -namespace Win32Functions -PassThru
-#$null = $asyncwindow::ShowWindowAsync((Get-Process -PID $pid).MainWindowHandle, 0)
+$windowcode = '[DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);'
+$asyncwindow = Add-Type -MemberDefinition $windowcode -name Win32ShowWindowAsync -namespace Win32Functions -PassThru
+$null = $asyncwindow::ShowWindowAsync((Get-Process -PID $pid).MainWindowHandle, 0)
 
 
 # Force garbage collection just to start slightly lower RAM usage.
@@ -247,11 +262,25 @@ Function TimeOut {
 $appContext = New-Object System.Windows.Forms.ApplicationContext
 [void][System.Windows.Forms.Application]::Run($appContext)
 
-#------------------------------------------------------------------------------
+
+# TCP socket - client
+$server = '127.0.0.1'
+$port   = 7807
+
+$client = New-Object Net.Sockets.TcpClient
+$client.Connect($server, $port)
+$stream = $client.GetStream()
+
+$writer = New-Object IO.StreamWriter($stream)
+$writer.AutoFlush = $true
+$writer.WriteLine('RESET')
 
 
 
 
-#$args
-#pause
+$reader = New-Object IO.StreamReader($stream)
+$reader.ReadLine()
 
+$reader.Dispose()
+
+$client.Dispose()
