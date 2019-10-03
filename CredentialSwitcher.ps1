@@ -324,13 +324,15 @@ do{
 
 # named pipe - server
 $name = 'foo'
-$namedPipe = New-Object IO.Pipes.NamedPipeServerStream($name, 'Out')
+$namedPipe = New-Object IO.Pipes.NamedPipeServerStream($name, 'InOut')
 $namedPipe.WaitForConnection()
 
 $script:writer = New-Object IO.StreamWriter($namedPipe)
 $writer.AutoFlush = $true
 $writer.WriteLine('something')
 $writer.Dispose()
+
+
 
 $namedPipe.Dispose()
 
@@ -418,3 +420,141 @@ $Menu_Restart_Tool.add_Click({
  })
  
  
+
+
+
+
+ # Network Adapter Reset
+#---------------------------------------------------------------------------------------------------------------------------------------------
+Function ResetNetworkAdapter {
+[console]::beep(900,3000)
+Disable-NetAdapter -Name Ethernet -Confirm:$false
+do {} while ((Get-NetAdapter Ethernet).Status -ne "Disabled")
+Enable-NetAdapter -Name Ethernet -Confirm:$false
+do {} while ((Get-NetAdapter Ethernet).Status -ne "Up")
+$NotifyIcon.ShowBalloonTip(30000,"Attention!","Network Adapter Reset",[system.windows.forms.ToolTipIcon]"Warning")
+}
+
+
+
+ $scriptblock = {
+param($myParam); 
+    # My commands here
+# TCP socket - server
+$addr = [ipaddress]'127.0.0.1'
+$port = 1234
+
+$endpoint = New-Object Net.IPEndPoint ($addr, $port)
+$server = New-Object Net.Sockets.TcpListener $endpoint
+$server.Start()
+$cn = $server.AcceptTcpClient()
+
+
+$stream = $cn.GetStream()
+$reader = New-Object IO.StreamReader($stream)
+
+while ($cn.Connected) {
+        $command = $reader.ReadLine()
+        if ($command -eq 'RESET') {[console]::beep(1900,2000);ResetNetworkAdapter; break}
+        Start-Sleep -Seconds 1
+        [console]::beep(900,500)
+}
+
+}
+
+Start-Job -ScriptBlock $scriptblock -args $myParamsIWantToPassToScriptblock
+
+While ($true){
+    # To view status of that background job
+    Get-Job *
+    # Add your logic for fulfilling your conditons here, then
+    # break; <<uncomment to break out of loop
+    if ($connected)
+    {
+        break;
+    }
+    cls
+    $connected
+    get-smbconnection | format-table
+    #Get-NetAdapter Ethernet | format-table
+    #Get-NetAdapter Ethernet | Format-List -Property "Status"
+     (Get-NetAdapter Ethernet).Status
+    Start-Sleep -Milliseconds  700
+
+}
+
+# Gets the output from that job. -Keep keeps the output in memory
+# if you want to call it multiple times
+Receive-Job * -Keep
+
+
+pause
+
+
+
+
+# named pipe - client
+$name = 'CredentialSwitcher'
+$namedPipe = New-Object IO.Pipes.NamedPipeClientStream('.', $name, 'InOut')
+$namedPipe.Connect()
+$script:writer = New-Object IO.StreamWriter($namedPipe)
+
+$writer.WriteLine('RESET')
+$writer.Dispose()
+$script:reader = New-Object IO.StreamReader($namedPipe)
+
+$reader.ReadLine()
+$reader.Dispose()
+$namedPipe.Dispose() 
+
+
+
+
+
+
+
+
+
+
+# TCP socket - server
+$addr = [ipaddress]'127.0.0.1'
+$port = 1234
+
+$endpoint = New-Object Net.IPEndPoint ($addr, $port)
+$server = New-Object Net.Sockets.TcpListener $endpoint
+$server.Start()
+$cn = $server.AcceptTcpClient()
+
+$stream = $cn.GetStream()
+$writer = New-Object IO.StreamWriter($stream)
+$writer.WriteLine('something')
+$writer.Dispose()
+
+$server.Stop()
+
+
+
+
+# TCP socket - client
+$server = '127.0.0.1'
+$port   = 1234
+
+$client = New-Object Net.Sockets.TcpClient
+$client.Connect($server, $port)
+$stream = $client.GetStream()
+
+$writer = New-Object IO.StreamWriter($stream)
+$writer.WriteLine('RESET')
+
+
+
+
+$reader = New-Object IO.StreamReader($stream)
+$reader.ReadLine()
+
+$reader.Dispose()
+
+$client.Dispose()
+
+
+
