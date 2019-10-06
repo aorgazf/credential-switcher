@@ -45,23 +45,8 @@ Test-IfAlreadyRunning -ScriptName $ScriptName
 #------------------------------------------------------------------------------
 
 
-# Credentials
+# Check for valid credentials
 #------------------------------------------------------------------------------
-
-$CredentialsFolderPath = "$env:USERPROFILE\AppData\Local\CredentialSwitcher"
-$CredentialsFilePath = "$CredentialsFolderPath\Credentials.txt"
-$PrivilegedCredentialsUsername = "admin"
-$UnprivilegedCredentialsUsername = "user"
-$NetworkShareDriveLetter = "N:"
-$NetworkHost="NAS" # host name or IP address
-$NetworkSharePath = "\\$NetworkHost\NetworkFolder"
-$SessionTimeOut = 1 #minutes
-$MinimumPinSize = 4
-$Today = Get-Date
-$CredentialsValidityPeriod = 10 #days
-$addr = [ipaddress]'127.0.0.1'
-$port = 1234
-
 
 $CredentialsFolderPath = "$env:USERPROFILE\AppData\Local\CredentialSwitcher"
 $CredentialsFilePath = "$CredentialsFolderPath\Credentials.txt"
@@ -75,10 +60,9 @@ $MinimumPinSize = 4
 $Today = Get-Date
 $CredentialsValidityPeriod = 10 #days
 $addr = [ipaddress]'127.0.0.1'
-$port = 1233
+$port = 1234
 
-#---------------------------------------------------------------------------------------------------------------------------------------------
-# Check for stored credentials
+
 # If credentials were not saved (or if they have expired), ask user for privileged and unprivileged credentials, encrypt them and save them
 $ValidCredentials = $false
 if (Test-Path -Path $CredentialsFilePath) {if ((Get-Item $CredentialsFilePath).LastWriteTime.AddDays($CredentialsValidityPeriod) -gt $Today) { $ValidCredentials=$true}}
@@ -108,50 +92,78 @@ if (-not($ValidCredentials)) {
     New-Item -Path $CredentialsFilePath -ItemType "file" -Value "$EncryptedPrivileged`r`n" -Force
     Add-Content -Path $CredentialsFilePath -Value $EncryptedUnprivileged -Force
     
+    $PrivilegedCredentials = $null
+    $UnprivilegedCredentials = $null
+    $EncryptedPrivileged = $null
+    $EncryptedUnprivileged = $null
+    $KeySS = $null
+
     Write-Host "Credentials saved to $CredentialsFilePath"
 }
 #---------------------------------------------------------------------------------------------------------------------------------------------
 
+
+# Launch TCP Listener and wait for commands
 #---------------------------------------------------------------------------------------------------------------------------------------------
-# Check Credentials Vault
-#---------------------------------------------------------------------------------------------------------------------------------------------
-
-
-# Network Adapter Reset
-#---------------------------------------------------------------------------------------------------------------------------------------------
-Function ResetNetworkAdapter {
-Disable-NetAdapter -Name Ethernet -Confirm:$false
-do {} while ((Get-NetAdapter Ethernet).Status -ne "Disabled")
-Enable-NetAdapter -Name Ethernet -Confirm:$false
-do {} while ((Get-NetAdapter Ethernet).Status -ne "Up")
-$NotifyIcon.ShowBalloonTip(30000,"Attention!","Network Adapter Reset",[system.windows.forms.ToolTipIcon]"Warning")
-}
-
-
-
-
  $scriptblock = {
-    #param($myParam); 
-
+    param($addr, $port) 
+    # $addr = [ipaddress]'127.0.0.1';$port = 1235
     $endpoint = New-Object Net.IPEndPoint ($addr, $port)
     $server = New-Object Net.Sockets.TcpListener $endpoint
-    $server.Start()
-    $cn = $server.AcceptTcpClient()
-    $stream = $cn.GetStream()
-    $reader = New-Object IO.StreamReader($stream)
 
-    while ($True) {
-        Try{
-            $command = $reader.ReadLine()
-            Write-Output $command
-            if ($command -eq 'EXIT') {[console]::beep(1900,2000); break}
+    $exiting = $False
+    while (-not $exiting){
+        $server.Start()
+        Write-Output "Listening"
+        $client = $server.AcceptTcpClient()
+        $client.ReceiveTimeout= 1000
+        # [Console]::beep(1000,300)
+        $stream = $client.GetStream()
+        $reader = New-Object IO.StreamReader($stream)
+        $writer = New-Object IO.StreamWriter($stream)
+        $writer.AutoFlush = $true
+        Write-Output "Client_Connected"
+        $timeouts = 0
+        $client_disconnected = $false
+        while (-not $client_disconnected) {
+            Try{
+                $command = $reader.ReadLine()
+                switch ($command) {
+                'EXIT'  { $exiting = $True; break}
+                'PING'  { $writer.WriteLine("PONG")}
+                }
+                if ($command -ne 'PING') {Write-Output $command}
+
+            } Catch {$command = $null}
+            if ($command -eq $null) {$timeouts = $timeouts +1;if ($timeouts -ge 3) {$client_disconnected = $true; break}} else {$timeouts = 0}
             Start-Sleep -Seconds 1
-        } Catch {}
+        }
+        Write-Output "Client_Disconnected"
+        $writer.Dispose(); $writer = $null
+        $reader.Dispose(); $reader = $null
+        $stream.Dispose(); $stream = $null
+        $client.Dispose(); $client = $null
+        Start-Sleep -Seconds 1
     }
+    $server.stop()
 }
 
-$job = Start-Job -ScriptBlock $scriptblock #-args $myParamsIWantToPassToScriptblock
+$job = Start-Job -ScriptBlock $scriptblock -args $addr, $port
+#---------------------------------------------------------------------------------------------------------------------------------------------
 
+
+
+# Action - Reset Network Adapter
+#---------------------------------------------------------------------------------------------------------------------------------------------
+$NetworkAdapter = 'Ethernet'
+Function ResetNetworkAdapter {
+    Disable-NetAdapter -Name $NetworkAdapter -Confirm:$false
+    do {} while ((Get-NetAdapter $NetworkAdapter).Status -ne "Disabled")
+    Enable-NetAdapter -Name $NetworkAdapter -Confirm:$false
+    do {} while ((Get-NetAdapter $NetworkAdapter).Status -ne "Up")
+    $NotifyIcon.ShowBalloonTip(30000,"Attention!","Network Adapter Reset",[system.windows.forms.ToolTipIcon]"Warning")
+}
+#---------------------------------------------------------------------------------------------------------------------------------------------
 
 
 
@@ -197,6 +209,9 @@ $Menu_Exit = New-Object System.Windows.Forms.MenuItem
 $Menu_Exit.Text = "Exit"
 $NotifyIcon.ContextMenu.MenuItems.AddRange($Menu_Exit)
 
+$Menu_ShowWindow = New-Object System.Windows.Forms.MenuItem
+$Menu_ShowWindow.Text = "Show"
+$NotifyIcon.ContextMenu.MenuItems.AddRange($Menu_ShowWindow)
 
 
 $Menu_ClearC.add_Click({
@@ -217,6 +232,13 @@ $Menu_Exit.add_Click({
 $NotifyIcon.Add_MouseDoubleClick({
     ResetNetworkAdapter
 })
+
+
+$Menu_ShowWindow.add_Click({
+    $MainForm.WindowState = "normal"
+    $MainForm.Show()
+})
+
 
 
 $TimerRoutine.Interval = 1000 # (0.5 min)
@@ -263,24 +285,3 @@ $appContext = New-Object System.Windows.Forms.ApplicationContext
 [void][System.Windows.Forms.Application]::Run($appContext)
 
 
-# TCP socket - client
-$server = '127.0.0.1'
-$port   = 7807
-
-$client = New-Object Net.Sockets.TcpClient
-$client.Connect($server, $port)
-$stream = $client.GetStream()
-
-$writer = New-Object IO.StreamWriter($stream)
-$writer.AutoFlush = $true
-$writer.WriteLine('RESET')
-
-
-
-
-$reader = New-Object IO.StreamReader($stream)
-$reader.ReadLine()
-
-$reader.Dispose()
-
-$client.Dispose()
