@@ -43,7 +43,8 @@ A simple PowerShell script that allows the user to temporarily switch to use dif
 
 Windows `net use` command can be used to connect to network folders, however `net use /delete` does not close the opened SMB connections. The following screenshot shows the results of  `Get-SmbConnection` cmdlet confirming that there are lingering connections after the use of `net use /delete`.
 
-![.png](https://raw.githubusercontent.com/aorgazf/credential-switcher/master/img/.png)
+
+![get-smbconnection_after_net_use_delete.png](https://raw.githubusercontent.com/aorgazf/credential-switcher/master/img/get-smbconnection_after_net_use_delete.png)
 
 After some research, the best method to ensure the connections are closed is to disable the network adapter through which they were created. This method works better than the alternative of restarting Windows Explorer process. The downside is that disabling and re-enabling a network adapter requires administrator privileges.
 
