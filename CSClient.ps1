@@ -2,12 +2,13 @@
 # Credential Switcher
 # Alvaro Orgaz Fuertes
 # GNU GPLv3
-#
+# Release 1.1
+# - Remove saved credentials if found to have expired
+# - Implement time outs in reading and connecting functions
+# - 
+
 # ToDo:
-# - Credentials stored on the local drive are deleted after a set time. User is requested to provide again passwords which are encrypted witha new key and pin.
 # - Provide a graphical representation of the current credential being used (user/admin) (green/safe, red/unsafe).
-# - Display timer until timeout.
-# - Generate a random KeyBase.
 # 
 
 # Check for valid credentials
@@ -27,10 +28,9 @@ $CredentialsValidityPeriod = 10 #days
 $addr = [ipaddress]'127.0.0.1'
 $port = 1234
 
-
 # If credentials were not saved (or if they have expired), ask user for privileged and unprivileged credentials, encrypt them and save them
 $ValidCredentials = $false
-if (Test-Path -Path $CredentialsFilePath) {if ((Get-Item $CredentialsFilePath).LastWriteTime.AddDays($CredentialsValidityPeriod) -gt $Today) { $ValidCredentials=$true}}
+if (Test-Path -Path $CredentialsFilePath) {if ((Get-Item $CredentialsFilePath).LastWriteTime.AddDays($CredentialsValidityPeriod) -gt $Today) {$ValidCredentials=$true} else {Remove-Item $CredentialsFilePath}}
 if (-not($ValidCredentials)) {  
     #Ask user for credentials
     $PrivilegedCredentials = $host.ui.PromptForCredential("Privileged Credentials", "Please enter password", $PrivilegedCredentialsUsername, "")
@@ -50,9 +50,6 @@ if (-not($ValidCredentials)) {
 
     $EncryptedPrivileged = ConvertFrom-SecureString -SecureString $PrivilegedCredentials.Password -SecureKey $KeySS
     $EncryptedUnprivileged = ConvertFrom-SecureString -SecureString $UnprivilegedCredentials.Password -SecureKey $KeySS
-
-    Write-Host $EncryptedPrivileged.Length
-    Write-Host $EncryptedUnprivileged.Length
 
     New-Item -Path $CredentialsFilePath -ItemType "file" -Value "$EncryptedPrivileged`r`n" -Force
     Add-Content -Path $CredentialsFilePath -Value $EncryptedUnprivileged -Force
@@ -80,33 +77,38 @@ if (-not($ValidCredentials)) {
     $UnprivilegedCredentials = New-Object System.Management.Automation.PsCredential($UnprivilegedCredentialsUsername, $UnprivilegedPasswordSS)
 }
 
+$reader = $null
+$writer = $null
+$stream = $null
+$client = $null
 
 function RequestServerReset {
-    do{
-        if ($global:writer -ne $null) {$global:writer.Dispose(); $global:writer = $null}
-        if ($global:reader -ne $null) {$global:reader.Dispose(); $global:reader = $null}
-        if ($global:stream -ne $null) {$global:stream.Dispose(); $global:stream = $null}
-        if ($global:client -ne $null) {$global:client.Dispose(); $global:client = $null}
+    $counter = 0
 
-        $global:client = New-Object Net.Sockets.TcpClient
-        $global:client.Connect($addr, $port)
-        #$global:client.ReceiveTimeout= 1000
-        $global:stream = $global:client.GetStream()
-        $global:reader = New-Object IO.StreamReader($global:stream)
-        $global:writer = New-Object IO.StreamWriter($global:stream)
-        $global:writer.AutoFlush = $true
+    while($true) {
+        if ($writer -ne $null) {$writer.Dispose(); $writer = $null}
+        if ($reader -ne $null) {$reader.Dispose(); $reader = $null}
+        if ($stream -ne $null) {$stream.Dispose(); $stream = $null}
+        if ($client -ne $null) {$client.Dispose(); $client = $null}
+
+        $client = New-Object Net.Sockets.TcpClient
+        $client.Connect($addr, $port)
+        $client.ReceiveTimeout= 1000
+        $stream = $client.GetStream()
+        $reader = New-Object IO.StreamReader($stream)
+        $writer = New-Object IO.StreamWriter($stream)
+        $writer.AutoFlush = $true
 
         try{
-            write-output "Pinging..."
             $PingResponse = $null
-            $global:writer.WriteLine('PING')
+            $writer.WriteLine('PING')
             $PingResponse = $reader.ReadLine()
-            write-output $PingResponse
         } catch {}
         Start-Sleep -Seconds 1
-    } until ($PingResponse -eq 'PONG')
-    #ToDo: Implement TimeOut
-    $writer.WriteLine('RESET')
+        $counter += 1; 
+        if ($PingResponse -eq 'PONG') {$writer.WriteLine('RESET'); break}        
+        if ($counter -ge 15) {Write-Output "[CS Client] Unable to connect to CS Server"; break}
+    }
 }
 
 function Start-GCTimeoutDialog {
@@ -262,16 +264,19 @@ net use /delete $NetworkShareDriveLetter /y
 net use /delete $NetworkSharePath /y
 cmdkey /delete:$NetworkHost
 RequestServerReset
+
+$counter = 0
 do{
     $Result = $null
     Start-Sleep -Milliseconds  500
     $Result= &{ net use $NetworkShareDriveLetter $NetworkSharePath /user:$($PrivilegedCredentials.UserName) "$($PrivilegedCredentials.GetNetworkCredential().Password)" } *>&1
+    $counter += 1;       
+    if ($counter -ge 15) {Write-Output "[CS Client] Unable to map network share with privileged credentials"; break}
 } while (-not $Result.Contains('The command completed successfully.'))
 
 
 do {
 Start-Sleep -Milliseconds  ($SessionTimeOut * 60000)
-    #$msgBoxInput = [Windows.Forms.MessageBox]::Show('Credentials are going to be switched back to unpriviledged. If you would like to continue working with admin credentials please press cancel','Credential Switching', [Windows.Forms.MessageBoxButtons]::OKCancel, [Windows.Forms.MessageBoxIcon]::Question)
     $msgBoxInput = Start-GCTimeoutDialog -Title "Credential Switcher" -Message "Credentials are going to be switched back to unpriviledged. If you would like to continue working with privileged credentials please press Cancel." -Seconds 10
 } while ($msgBoxInput -eq 'Cancel')
 
@@ -281,9 +286,13 @@ net use /delete $NetworkShareDriveLetter /y
 net use /delete $NetworkSharePath /y
 cmdkey /delete:$NetworkHost
 RequestServerReset
+
+$counter = 0
 do{
     $Result = $null
     Start-Sleep -Milliseconds  500
     $Result= &{ net use $NetworkShareDriveLetter $NetworkSharePath /user:$($UnprivilegedCredentials.UserName) "$($UnprivilegedCredentials.GetNetworkCredential().Password)" /persistent:yes} *>&1
+    $counter += 1;       
+    if ($counter -ge 15) {Write-Output "[CS Client] Unable to restore network share with unprivileged credentials"; break}
 } while (-not $Result.Contains('The command completed successfully.'))
 cmdkey /add:$NetworkHost /user:$($UnprivilegedCredentials.UserName) /pass:"$($UnprivilegedCredentials.GetNetworkCredential().Password)"

@@ -1,7 +1,16 @@
 # Credential Switcher Service
 # Alvaro Orgaz Fuertes
 # GNU GPLv3
-#
+# Release 1.1
+# - Remove the default checking of credentials at startup
+
+# ToDo:
+# - Implement Context Menu Commands:
+#   - Check Credentials
+#   - Delete Credentials
+#   - Switching notification icons
+#   - 
+
 
 # Resetting Network Interfaces requires administrator privileges
 #------------------------------------------------------------------------------
@@ -48,66 +57,16 @@ Test-IfAlreadyRunning -ScriptName $ScriptName
 # Check for valid credentials
 #------------------------------------------------------------------------------
 
-$CredentialsFolderPath = "$env:USERPROFILE\AppData\Local\CredentialSwitcher"
-$CredentialsFilePath = "$CredentialsFolderPath\Credentials.txt"
-$PrivilegedCredentialsUsername = "admin"
-$UnprivilegedCredentialsUsername = "Alvaro"
-$NetworkShareDriveLetter = "Q:"
-$NetworkHost="NAS" # host name or IP address
-$NetworkSharePath = "\\$NetworkHost\Portal"
-$SessionTimeOut = 0.2 #minutes
-$MinimumPinSize = 4
-$Today = Get-Date
-$CredentialsValidityPeriod = 10 #days
 $addr = [ipaddress]'127.0.0.1'
 $port = 1234
-
-
-# If credentials were not saved (or if they have expired), ask user for privileged and unprivileged credentials, encrypt them and save them
-$ValidCredentials = $false
-if (Test-Path -Path $CredentialsFilePath) {if ((Get-Item $CredentialsFilePath).LastWriteTime.AddDays($CredentialsValidityPeriod) -gt $Today) { $ValidCredentials=$true}}
-if (-not($ValidCredentials)) {  
-    #Ask user for credentials
-    $PrivilegedCredentials = $host.ui.PromptForCredential("Privileged Credentials", "Please enter password", $PrivilegedCredentialsUsername, "")
-    $UnprivilegedCredentials = $host.ui.PromptForCredential("Unprivileged Credentials", "Please enter password", $UnprivilegedCredentialsUsername, "")
-
-    #Ask use to set a Passcode
-    $KeySS =  Read-Host "Please set Passcode" -asSecureString
-    if (($KeySS.Length -lt $MinimumPinSize) -or ($KeySS.Length -gt 16)) {
-        Write-Host "Pin must be between $MinimumPinSize to 16 characters long"
-        Exit
-    }
-    
-    #Pad key up to 16 bytes long
-    for ($i=$KeySS.Length; $i -lt 16; $i++) {
-        $KeySS.AppendChar([char]32)
-    }    
-
-    $EncryptedPrivileged = ConvertFrom-SecureString -SecureString $PrivilegedCredentials.Password -SecureKey $KeySS
-    $EncryptedUnprivileged = ConvertFrom-SecureString -SecureString $UnprivilegedCredentials.Password -SecureKey $KeySS
-
-    Write-Host $EncryptedPrivileged.Length
-    Write-Host $EncryptedUnprivileged.Length
-
-    New-Item -Path $CredentialsFilePath -ItemType "file" -Value "$EncryptedPrivileged`r`n" -Force
-    Add-Content -Path $CredentialsFilePath -Value $EncryptedUnprivileged -Force
-    
-    $PrivilegedCredentials = $null
-    $UnprivilegedCredentials = $null
-    $EncryptedPrivileged = $null
-    $EncryptedUnprivileged = $null
-    $KeySS = $null
-
-    Write-Host "Credentials saved to $CredentialsFilePath"
-}
-#---------------------------------------------------------------------------------------------------------------------------------------------
+$NetworkAdapter = 'Ethernet'
 
 
 # Launch TCP Listener and wait for commands
 #---------------------------------------------------------------------------------------------------------------------------------------------
  $scriptblock = {
     param($addr, $port) 
-    # $addr = [ipaddress]'127.0.0.1';$port = 1235
+    # $addr = [ipaddress]'127.0.0.1';$port = 1234
     $endpoint = New-Object Net.IPEndPoint ($addr, $port)
     $server = New-Object Net.Sockets.TcpListener $endpoint
 
@@ -147,7 +106,6 @@ if (-not($ValidCredentials)) {
     }
     $server.stop()
 }
-
 $job = Start-Job -ScriptBlock $scriptblock -args $addr, $port
 #---------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -155,7 +113,7 @@ $job = Start-Job -ScriptBlock $scriptblock -args $addr, $port
 
 # Action - Reset Network Adapter
 #---------------------------------------------------------------------------------------------------------------------------------------------
-$NetworkAdapter = 'Ethernet'
+
 Function ResetNetworkAdapter {
     Disable-NetAdapter -Name $NetworkAdapter -Confirm:$false
     do {} while ((Get-NetAdapter $NetworkAdapter).Status -ne "Disabled")
@@ -170,7 +128,7 @@ Function ResetNetworkAdapter {
 
 
 
-# Notification Icon
+# User Interface
 #------------------------------------------------------------------------------
 # Credits: 
 # Mr. Annoyed
@@ -187,7 +145,6 @@ $NotifyIcon= New-Object System.Windows.Forms.NotifyIcon
 $ContextMenu = New-Object System.Windows.Forms.ContextMenu
 
 $TimerRoutine = New-Object System.Windows.Forms.Timer
-$TimerSessionTimeOut = New-Object System.Windows.Forms.Timer
 $iconWarn = New-Object System.Drawing.Icon("$PSScriptRoot\Warning.ico")
 
 
@@ -256,15 +213,6 @@ Function Routine{
        Stop-Process $pid
       }
     }
-}
-
-$TimerSessionTimeOut.Interval = 3000 # ($SessionTimeOut * 60000)
-$TimerSessionTimeOut.add_Tick({TimeOut})
-#$TimerSessionTimeOut.start()
-
-Function TimeOut {
-    $TimerSessionTimeOut.stop()
-    $TimerSessionTimeOut.start()
 }
 
 
