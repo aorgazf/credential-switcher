@@ -9,7 +9,7 @@
 #   - Check Credentials
 #   - Delete Credentials
 #   - Switching notification icons
-#   - 
+#   - schtasks /create /tn "my_mount" /tr "net use V: \\hostname\path /persistent:yes" /sc onstart
 
 
 # Resetting Network Interfaces requires administrator privileges
@@ -54,7 +54,7 @@ Test-IfAlreadyRunning -ScriptName $ScriptName
 #------------------------------------------------------------------------------
 
 
-# Check for valid credentials
+
 #------------------------------------------------------------------------------
 
 $addr = [ipaddress]'127.0.0.1'
@@ -76,6 +76,7 @@ $NetworkAdapter = 'Ethernet'
         Write-Output "Listening"
         $client = $server.AcceptTcpClient()
         $client.ReceiveTimeout= 1000
+        $client.SendTimeout= 1000
         # [Console]::beep(1000,300)
         $stream = $client.GetStream()
         $reader = New-Object IO.StreamReader($stream)

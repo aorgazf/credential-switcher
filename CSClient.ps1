@@ -9,7 +9,7 @@
 
 # ToDo:
 # - Provide a graphical representation of the current credential being used (user/admin) (green/safe, red/unsafe).
-# 
+# - Implement Net.Sockets.TcpClient Connect Timeout as http://www.vbforums.com/showthread.php?446875
 
 # Check for valid credentials
 #------------------------------------------------------------------------------
@@ -18,7 +18,7 @@ $CredentialsFolderPath = "$env:USERPROFILE\AppData\Local\CredentialSwitcher"
 $CredentialsFilePath = "$CredentialsFolderPath\Credentials.txt"
 $PrivilegedCredentialsUsername = "admin"
 $UnprivilegedCredentialsUsername = "Alvaro"
-$NetworkShareDriveLetter = "Q:"
+$NetworkShareDriveLetter = "Q"
 $NetworkHost="NAS" # host name or IP address
 $NetworkSharePath = "\\$NetworkHost\Portal"
 $SessionTimeOut = 0.2 #minutes
@@ -86,13 +86,15 @@ function RequestServerReset {
     $counter = 0
 
     while($true) {
+
         if ($writer -ne $null) {$writer.Dispose(); $writer = $null}
         if ($reader -ne $null) {$reader.Dispose(); $reader = $null}
         if ($stream -ne $null) {$stream.Dispose(); $stream = $null}
         if ($client -ne $null) {$client.Dispose(); $client = $null}
 
         $client = New-Object Net.Sockets.TcpClient
-        $client.Connect($addr, $port)
+        $client.Connect($addr, $port) #if firewall holds the connection, the process will freeze, TODO implement connect timeout
+        $client.SendTimeout= 1000
         $client.ReceiveTimeout= 1000
         $stream = $client.GetStream()
         $reader = New-Object IO.StreamReader($stream)
@@ -260,7 +262,7 @@ Add-Type -AssemblyName System.Windows.Forms
 
 
 #Switch
-net use /delete $NetworkShareDriveLetter /y
+net use /delete "${NetworkShareDriveLetter}:" /y
 net use /delete $NetworkSharePath /y
 cmdkey /delete:$NetworkHost
 RequestServerReset
@@ -269,20 +271,20 @@ $counter = 0
 do{
     $Result = $null
     Start-Sleep -Milliseconds  500
-    $Result= &{ net use $NetworkShareDriveLetter $NetworkSharePath /user:$($PrivilegedCredentials.UserName) "$($PrivilegedCredentials.GetNetworkCredential().Password)" } *>&1
+    $Result= &{ net use "${NetworkShareDriveLetter}:" $NetworkSharePath /user:$($PrivilegedCredentials.UserName) "$($PrivilegedCredentials.GetNetworkCredential().Password)" } *>&1
     $counter += 1;       
     if ($counter -ge 15) {Write-Output "[CS Client] Unable to map network share with privileged credentials"; break}
 } while (-not $Result.Contains('The command completed successfully.'))
 
 
 do {
-Start-Sleep -Milliseconds  ($SessionTimeOut * 60000)
+Start-Sleep -Seconds  ($SessionTimeOut * 60)
     $msgBoxInput = Start-GCTimeoutDialog -Title "Credential Switcher" -Message "Credentials are going to be switched back to unpriviledged. If you would like to continue working with privileged credentials please press Cancel." -Seconds 10
 } while ($msgBoxInput -eq 'Cancel')
 
 
 # SwitchCredentials Back
-net use /delete $NetworkShareDriveLetter /y
+net use /delete "${NetworkShareDriveLetter}:" /y
 net use /delete $NetworkSharePath /y
 cmdkey /delete:$NetworkHost
 RequestServerReset
@@ -291,8 +293,15 @@ $counter = 0
 do{
     $Result = $null
     Start-Sleep -Milliseconds  500
-    $Result= &{ net use $NetworkShareDriveLetter $NetworkSharePath /user:$($UnprivilegedCredentials.UserName) "$($UnprivilegedCredentials.GetNetworkCredential().Password)" /persistent:yes} *>&1
+    $Result= &{ net use "${NetworkShareDriveLetter}:" $NetworkSharePath /user:$($UnprivilegedCredentials.UserName) "$($UnprivilegedCredentials.GetNetworkCredential().Password)" /persistent:yes} *>&1
     $counter += 1;       
     if ($counter -ge 15) {Write-Output "[CS Client] Unable to restore network share with unprivileged credentials"; break}
 } while (-not $Result.Contains('The command completed successfully.'))
 cmdkey /add:$NetworkHost /user:$($UnprivilegedCredentials.UserName) /pass:"$($UnprivilegedCredentials.GetNetworkCredential().Password)"
+
+$registryPath = "HKCU:\Network\$NetworkShareDriveLetter"
+$Name = "DeferFlags"
+$value = "4"
+if(Test-Path $registryPath) {Set-ItemProperty -Path $registryPath -Name $name -Value $value}
+Copy-Item "$env:APPDATA\Microsoft\Credentials" -Destination "$env:LOCALAPPDATA\Microsoft" -Recurse
+Start-Sleep -Seconds 3
